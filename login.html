@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OMNI AI - Login</title>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/animations.css">
+    <link rel="stylesheet" href="/login.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="logo">🤖</div>
+            <h1>OMNI AI</h1>
+            <p class="subtitle">Premium AI Chatbot Platform</p>
+            <div class="error-msg" id="error"></div>
+            <form id="authForm">
+                <div class="input-group">
+                    <input type="email" id="email" placeholder="Email address" required autocomplete="email">
+                </div>
+                <div class="input-group">
+                    <input type="password" id="password" placeholder="Password" required autocomplete="current-password">
+                </div>
+                <div id="signupFields" class="hidden">
+                    <div class="input-group">
+                        <input type="text" id="username" placeholder="Username" autocomplete="username">
+                    </div>
+                    <div class="input-group">
+                        <input type="text" id="fullname" placeholder="Full Name (optional)">
+                    </div>
+                </div>
+                <button type="submit" id="submitBtn">Sign In</button>
+            </form>
+            <p class="toggle-text">
+                <span id="toggleSpan">Don't have an account?</span>
+                <a onclick="toggleMode()" id="toggleLink">Sign Up</a>
+            </p>
+        </div>
+    </div>
+    <script>
+        let isLogin = true;
+        function toggleMode() {
+            isLogin = !isLogin;
+            document.getElementById('signupFields').classList.toggle('hidden');
+            document.getElementById('submitBtn').textContent = isLogin ? 'Sign In' : 'Create Account';
+            document.getElementById('toggleSpan').textContent = isLogin ? "Don't have an account?" : "Already have an account?";
+            document.getElementById('toggleLink').textContent = isLogin ? 'Sign Up' : 'Sign In';
+            document.getElementById('error').style.display = 'none';
+        }
+        document.getElementById('authForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const url = isLogin ? '/auth/login' : '/auth/register';
+            const body = isLogin ? { email, password } : {
+                email, password,
+                username: document.getElementById('username').value,
+                full_name: document.getElementById('fullname').value
+            };
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (res.ok && data.access_token) {
+                    localStorage.setItem('token', data.access_token);
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    window.location.href = data.user.role === 'admin' ? '/admin' : '/chat';
+                } else {
+                    const err = document.getElementById('error');
+                    err.textContent = data.detail || 'Authentication failed';
+                    err.style.display = 'block';
+                }
+            } catch (err) {
+                document.getElementById('error').textContent = 'Network error';
+                document.getElementById('error').style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OMNI AI - Chat</title>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/animations.css">
+    <link rel="stylesheet" href="/chat.css">
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar" id="sidebar">
+            <h2>🤖 OMNI AI</h2>
+            <button class="new-chat-btn" onclick="newChat()">+ New Chat</button>
+            <div class="conv-list" id="convList"></div>
+            <button class="logout-btn" onclick="logout()">🚪 Logout</button>
+        </div>
+        <div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
+        <div class="main-area">
+            <div class="messages-container" id="messages">
+                <div class="empty-state">
+                    <div class="icon">💬</div>
+                    <h2>Welcome to OMNI AI</h2>
+                    <p>Intelligent dual-model AI. Ask about coding, debugging, or anything!</p>
+                </div>
+            </div>
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+                    <input type="text" id="userInput" placeholder="Type your message..." onkeypress="if(event.key==='Enter')sendMessage()" autofocus>
+                    <button onclick="sendMessage()" id="sendBtn">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const token = localStorage.getItem('token');
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        if (!token) window.location.href = '/';
+        
+        let currentConvId = null, isLoading = false;
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+            document.getElementById('overlay').classList.toggle('show');
+        }
+
+        async function loadConversations() {
+            const res = await fetch('/chat/history', { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await res.json();
+            document.getElementById('convList').innerHTML = data.map(c => 
+                `<div class="conv-item${c.id===currentConvId?' active':''}" onclick="loadConv(${c.id})">${c.title||'Untitled'}<span style="font-size:10px;color:#666;display:block">${c.message_count} msgs</span></div>`
+            ).join('') || '<p style="color:#666;font-size:13px;padding:8px">No conversations</p>';
+        }
+
+        function newChat() {
+            currentConvId = null;
+            document.getElementById('messages').innerHTML = '<div class="empty-state"><div class="icon">💬</div><h2>New Chat</h2><p>Start a conversation!</p></div>';
+            if(window.innerWidth<768) toggleSidebar();
+        }
+
+        async function loadConv(id) {
+            currentConvId = id;
+            const res = await fetch(`/chat/conversation/${id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+            const data = await res.json();
+            if(data.messages) document.getElementById('messages').innerHTML = data.messages.map(m => 
+                `<div class="message ${m.role}"><div class="message-content">${formatContent(m.content)}</div></div>`
+            ).join('');
+            loadConversations();
+            if(window.innerWidth<768) toggleSidebar();
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const msg = input.value.trim();
+            if(!msg||isLoading) return;
+            isLoading=true; input.value=''; document.getElementById('sendBtn').disabled=true;
+            
+            const empty = document.querySelector('.empty-state');
+            if(empty) empty.remove();
+            
+            document.getElementById('messages').innerHTML += `<div class="message user"><div class="message-content">${escapeHtml(msg)}</div></div>`;
+            
+            const typingId = 'typing-'+Date.now();
+            document.getElementById('messages').innerHTML += `<div class="message assistant" id="${typingId}"><div class="message-content"><div class="typing-indicator"><span></span><span></span><span></span></div></div></div>`;
+            scrollToBottom();
+            
+            try {
+                const res = await fetch('/chat/message', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+                    body:JSON.stringify({conversation_id:currentConvId,message:msg})
+                });
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let full='', model='';
+                document.getElementById(typingId).remove();
+                
+                const aid = 'msg-'+Date.now();
+                document.getElementById('messages').innerHTML += `<div class="message assistant" id="${aid}"><div class="message-content"></div></div>`;
+                
+                while(true) {
+                    const {done,value} = await reader.read();
+                    if(done) break;
+                    for(const line of decoder.decode(value).split('\n')) {
+                        if(line.startsWith('data: ')) {
+                            try {
+                                const d = JSON.parse(line.substring(6));
+                                if(d.content) { full+=d.content; const el=document.getElementById(aid); if(el) el.querySelector('.message-content').innerHTML=formatContent(full); scrollToBottom(); }
+                                if(d.done) { currentConvId=d.conversation_id; model=d.model; }
+                            } catch(e) {}
+                        }
+                    }
+                }
+                if(model) { const el=document.getElementById(aid); if(el) el.querySelector('.message-content').innerHTML+=`<span class="model-badge model-${model==='deepseek-coder'?'coder':'chat'}">${model}</span>`; }
+                loadConversations();
+            } catch(e) {
+                document.getElementById('messages').innerHTML += '<div class="message assistant"><div class="message-content">Error. Please try again.</div></div>';
+            }
+            isLoading=false; document.getElementById('sendBtn').disabled=false; input.focus();
+        }
+
+        function escapeHtml(t) { const d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
+        function formatContent(t) { return t.replace(/```(\w+)?\n([\s\S]*?)```/g,'<pre data-lang="$1"><code>$2</code></pre>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>'); }
+        function scrollToBottom() { const c=document.getElementById('messages'); setTimeout(()=>c.scrollTop=c.scrollHeight,100); }
+        function logout() { localStorage.clear(); window.location.href='/'; }
+
+        loadConversations();
+    </script>
+</body>
+</html>

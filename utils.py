@@ -1,0 +1,21 @@
+import logging
+import os
+from datetime import datetime
+
+os.makedirs("logs", exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(f"logs/app_{datetime.now().strftime('%Y%m%d')}.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("OMNI_AI")
+
+def log_info(msg: str):
+    logger.info(msg)
+
+def log_error(msg: str):
+    logger.error(msg)
